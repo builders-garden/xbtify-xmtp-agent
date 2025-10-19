@@ -144,7 +144,7 @@ export const handleXmtpMessage = async (
 					senderAddress: getAddress(senderAddress),
 					onSuccess: async ({ txHash }) => {
 						ctx.sendText(
-							`Payment received, creating your ai clone in the background... you'll be notified when it's ready`,
+							`Payment received, creating your ai clone in the background... you'll be notified when it's ready.\n\nOpen https://xbtify.me for a preview.`,
 						);
 						await setUserPaidTxHash(senderAddress, txHash);
 					},
@@ -228,6 +228,9 @@ export const handleXmtpMessage = async (
 						targetAddress: getAddress(agentAddress),
 						senderAddress: getAddress(senderAddress),
 						onSuccess: async ({ txHash }) => {
+							ctx.sendText(
+								`Payment received, creating your ai clone in the background... you'll be notified when it's ready.\n\nOpen https://xbtify.me for a preview.`,
+							);
 							await setUserPaidTxHash(senderAddress, txHash);
 						},
 					});
