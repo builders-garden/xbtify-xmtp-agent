@@ -5,15 +5,9 @@ import {
 	ACTIONS_MESSAGE,
 	AGENT_TRANSFER_AMOUNT,
 	BASE_USDC_ADDRESS,
-	HELP_HINT_MESSAGE,
 } from "../lib/constants.js";
 import { env } from "../lib/env.js";
-import {
-	getEstimatedGasFee,
-	getEthBalance,
-	getTokenBalance,
-	transferERC20,
-} from "../utils/index.js";
+import { getBaseUsdcBalance, transferERC20 } from "../utils/index.js";
 import { ActionBuilder, buildTransferAction, registerAction } from "./index.js";
 
 /**
@@ -21,21 +15,14 @@ import { ActionBuilder, buildTransferAction, registerAction } from "./index.js";
  * @param erc20Handler - The ERC20 handler
  */
 export const registerXmtpActions = () => {
-	registerAction("start", async (ctx) => {
+	registerAction("xbtify_create", async (ctx) => {
 		await ctx.sendText(
-			"🔍 Tag me (@xbtify.base.eth) and tell that you want to clone yourself\n\nE.g.\nHey @xbtify.base.eth clone myself",
+			"🔍 Tag me (@xbtify.base.eth) and tell that you want to create an xbt of yourself\n\nE.g.\nHey @xbtify.base.eth clone myself",
 		);
 	});
 
 	registerAction("open-app", async (ctx) => {
-		const senderAddress = await ctx.getSenderAddress();
-		if (!senderAddress) return;
-
 		await ctx.sendText(`💸 explore group stats on the app ${env.APP_URL}`);
-	});
-
-	registerAction("help", async (ctx) => {
-		await ctx.sendText(HELP_HINT_MESSAGE);
 	});
 };
 
@@ -91,28 +78,12 @@ export const getXmtpTransferAction = ({
 			);
 
 			// check if a user has enough balance of the sell token
-			const [tokenBalance, ethBalance, gasEstimate] = await Promise.all([
-				getTokenBalance({
-					tokenAddress: BASE_USDC_ADDRESS,
-					address: senderAddress as Address,
-					chainId: base.id,
-				}),
-				getEthBalance({
-					address: senderAddress as Address,
-					chainId: base.id,
-				}),
-				getEstimatedGasFee({ chainId: base.id }),
-			]);
+			const tokenBalance = await getBaseUsdcBalance({
+				address: senderAddress as Address,
+			});
 			let sellAmount = AGENT_TRANSFER_AMOUNT;
-			let sellAmountInDecimals = parseUnits(
-				sellAmount.toString(),
-				tokenBalance.tokenDecimals,
-			);
+			let sellAmountInDecimals = parseUnits(sellAmount.toString(), 6);
 
-			// user eth balance is lower than the gas estimate
-			const hasEnoughEth =
-				Number.parseFloat(ethBalance.balanceRaw) >
-				Number.parseFloat(gasEstimate.maxFeePerGas);
 			const hasEnoughToken =
 				BigInt(tokenBalance.balanceRaw) >= sellAmountInDecimals;
 			const hasSomeToken = BigInt(tokenBalance.balanceRaw) > BigInt(0);
@@ -122,23 +93,13 @@ export const getXmtpTransferAction = ({
 				JSON.stringify({
 					senderAddress,
 					tokenBalance,
-					ethBalance,
-					gasEstimate,
 					sellAmount,
 					sellAmountInDecimals: sellAmountInDecimals.toString(),
-					hasEnoughEth,
 					hasEnoughToken,
 					hasSomeToken,
 				}),
 			);
 
-			if (!hasEnoughEth) {
-				console.error(`❌ User does not have enough ETH on chain ${base.id}`);
-				await ctx.sendText(
-					`❌ User does not have enough ETH on chain ${base.id}`,
-				);
-				return;
-			}
 			// if user balance is lower than the sell amount
 			if (!hasEnoughToken) {
 				// if user has no balance, return
@@ -149,8 +110,7 @@ export const getXmtpTransferAction = ({
 				}
 				// if user has some token balance, use 50% of the balance for the transfer (base units)
 				sellAmountInDecimals = BigInt(tokenBalance.balanceRaw) / BigInt(2);
-				sellAmount =
-					Number(sellAmountInDecimals) / 10 ** tokenBalance.tokenDecimals;
+				sellAmount = Number(sellAmountInDecimals) / 10 ** 6;
 			}
 
 			// get transfer ERC20 calls
@@ -159,8 +119,8 @@ export const getXmtpTransferAction = ({
 				to: agentAddress,
 				chainId: base.id,
 				tokenAddress: BASE_USDC_ADDRESS as Address,
-				tokenSymbol: tokenBalance.symbol,
-				tokenDecimals: tokenBalance.tokenDecimals,
+				tokenSymbol: "USDC",
+				tokenDecimals: 6,
 				amount: sellAmount,
 				amountInDecimals: sellAmountInDecimals,
 			});

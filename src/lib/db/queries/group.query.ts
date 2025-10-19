@@ -1,11 +1,12 @@
 import {
-	type GroupMember,
 	IdentifierKind,
 	type Group as XmtpGroup,
+	type GroupMember as XmtpGroupMember,
 } from "@xmtp/agent-sdk";
 import { and, eq, inArray } from "drizzle-orm";
 import { ulid } from "ulid";
 import type { Address } from "viem";
+import type { GroupMemberWithUser } from "../../../types/user.type.js";
 import { XMTP_AGENTS } from "../../xmtp-agents.js";
 import {
 	type CreateGroup,
@@ -85,8 +86,7 @@ export const deleteGroupById = async (groupId: string) => {
  */
 export const upsertGroupMembers = async (
 	groupId: string,
-	membersRaw: GroupMember[],
-	_agentAddress: string,
+	membersRaw: XmtpGroupMember[],
 	agentInboxId: string,
 ) => {
 	// filter out the agent from the members
@@ -133,23 +133,31 @@ export const addDmMember = async (
 	groupId: string,
 	inboxId: string,
 	walletAddress: Address,
-) => {
+): Promise<GroupMemberWithUser | null> => {
 	// Ensure all users exist for given inboxIds and the members are not in the XMTP agents list
-	const users = await getOrCreateUsersByInboxIds([
-		{
-			inboxId,
-			address: walletAddress,
-		},
-	]);
-
-	const rows: CreateGroupMember[] = users.map((u) => ({
+	const user = await getOrCreateUserByInboxId(inboxId, walletAddress);
+	if (!user) {
+		return null;
+	}
+	const row: CreateGroupMember = {
 		id: ulid(),
 		groupId,
-		userId: u.id,
-	}));
+		userId: user.id,
+	};
 
 	// Insert ignoring duplicates via unique index (groupId,userId)
-	await db.insert(groupMemberTable).values(rows).onConflictDoNothing();
+	const [created] = await db
+		.insert(groupMemberTable)
+		.values(row)
+		.onConflictDoNothing()
+		.returning();
+	if (!created) {
+		return null;
+	}
+	return {
+		...created,
+		user,
+	};
 };
 
 /**
@@ -207,7 +215,6 @@ export const removeGroupMembersByInboxIds = async (
 export const getOrCreateGroupByConversationId = async (
 	conversationId: string,
 	xmtpGroup: XmtpGroup,
-	agentAddress: string,
 	agentInboxId: string,
 ): Promise<{ group: Group; isNew: boolean }> => {
 	const group = await getGroupByConversationId(conversationId);
@@ -220,7 +227,7 @@ export const getOrCreateGroupByConversationId = async (
 			imageUrl: xmtpGroup.imageUrl,
 		});
 		const members = await xmtpGroup.members();
-		await upsertGroupMembers(newGroup.id, members, agentAddress, agentInboxId);
+		await upsertGroupMembers(newGroup.id, members, agentInboxId);
 		return { group: newGroup, isNew: true };
 	}
 	return { group, isNew: false };
@@ -236,7 +243,7 @@ export const getOrCreateDmByConversationId = async (
 	conversationId: string,
 	walletAddress: Address,
 	inboxId: string,
-): Promise<{ group: Group; isNew: boolean }> => {
+): Promise<{ group: Group; isNew: boolean; user?: GroupMemberWithUser }> => {
 	const dm = await getGroupByConversationId(conversationId);
 	if (!dm) {
 		const newDm = await createGroup({
@@ -246,8 +253,15 @@ export const getOrCreateDmByConversationId = async (
 			description: undefined,
 			imageUrl: undefined,
 		});
-		await addDmMember(newDm.id, inboxId, walletAddress);
-		return { group: newDm, isNew: true };
+		const user = await addDmMember(newDm.id, inboxId, walletAddress);
+		if (!user) {
+			throw new Error("Failed to add dm member");
+		}
+		return { group: newDm, isNew: true, user };
 	}
-	return { group: dm, isNew: false };
+	return {
+		group: dm,
+		isNew: false,
+		user: dm.members[0] as GroupMemberWithUser,
+	};
 };

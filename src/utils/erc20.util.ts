@@ -6,6 +6,7 @@ import {
 	http,
 } from "viem";
 import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
+import { BASE_USDC_ADDRESS } from "../lib/constants.js";
 
 /**
  * Get the estimated gas fee for a given chain
@@ -113,64 +114,38 @@ export async function getTokenInfo({
 }
 
 /**
- * Get ERC20 balance for a given address
- * @param tokenAddress - The address of the ERC20 token to sell
- * @param tokenDecimals - The number of decimals of the ERC20 token
+ * Get Base USDC balance for a given address
  * @param address - The address to get the balance of
- * @returns The balance of the ERC20 token
+ * @returns The balance of the USDC token
  */
-export async function getTokenBalance({
-	tokenAddress,
+export async function getBaseUsdcBalance({
 	address,
-	chainId,
 }: {
-	tokenAddress: Address;
 	address: Address;
-	chainId: number;
 }): Promise<{
 	balanceRaw: string;
 	balance: string;
-	tokenDecimals: number;
-	symbol: string;
 }> {
-	const chain = getChain(chainId);
 	const publicClient = createPublicClient({
-		chain,
+		chain: base,
 		transport: http(),
 	});
-	const wagmiContract = {
-		address: tokenAddress,
-		abi: erc20Abi,
-	} as const;
 
 	// Similar to readContract but batches multiple calls https://viem.sh/docs/contract/multicall
-	const [balance, tokenDecimals, symbol] = await publicClient.multicall({
-		contracts: [
-			{
-				...wagmiContract,
-				functionName: "balanceOf",
-				args: [address],
-			},
-			{
-				...wagmiContract,
-				functionName: "decimals",
-			},
-			{
-				...wagmiContract,
-				functionName: "symbol",
-			},
-		],
+	const balance = await publicClient.readContract({
+		address: BASE_USDC_ADDRESS,
+		abi: erc20Abi,
+		functionName: "balanceOf",
+		args: [address],
 	});
-	if (!balance.result || !tokenDecimals.result || !symbol.result) {
-		console.error("Unable to get balance, token decimals, or symbol");
-		throw new Error("Unable to get balance, token decimals, or symbol");
+	if (!balance) {
+		console.error("Unable to get balance");
+		throw new Error("Unable to get balance");
 	}
 
 	return {
-		balanceRaw: balance.result.toString(),
-		balance: formatUnits(balance.result, tokenDecimals.result),
-		tokenDecimals: tokenDecimals.result,
-		symbol: symbol.result,
+		balanceRaw: balance.toString(),
+		balance: formatUnits(balance, 6),
 	};
 }
 

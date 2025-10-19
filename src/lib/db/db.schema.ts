@@ -23,6 +23,8 @@ export const userTable = pgTable("user", {
 	avatarUrl: text("avatar_url"),
 	username: text("username"),
 	inboxId: text("inbox_id").unique(),
+	// flags
+	paidTxHash: text("paid_tx_hash").default(""),
 	// Farcaster
 	farcasterFid: integer("farcaster_fid").unique(),
 	farcasterUsername: text("farcaster_username"),
@@ -87,6 +89,26 @@ export type CreateCast = typeof castTable.$inferInsert;
 export type UpdateCast = Partial<CreateCast>;
 
 /**
+ * Reply table
+ */
+export const replyTable = pgTable(
+	"reply",
+	{
+		hash: text("hash").primaryKey(),
+		fid: integer("fid").notNull(),
+		text: text("text").notNull(),
+		parentText: text("parent_text").notNull(),
+		parentAuthorFid: text("parent_author_fid").notNull(),
+		createdAt: timestamp("created_at").defaultNow(),
+	},
+	(t) => [index("idx_reply_fid").on(t.fid)],
+);
+
+export type Reply = typeof replyTable.$inferSelect;
+export type CreateReply = typeof replyTable.$inferInsert;
+export type UpdateReply = Partial<CreateReply>;
+
+/**
  * Agent table
  */
 export const agentTable = pgTable(
@@ -99,13 +121,28 @@ export const agentTable = pgTable(
 		creatorFid: integer("creator_fid")
 			.notNull()
 			.references(() => userTable.farcasterFid, { onDelete: "cascade" }),
-		basePrompt: text("base_prompt"),
-		customPrompt: text("custom_prompt"),
-		finalPrompt: text("final_prompt"),
+		// prompt custom sections
+		styleProfilePrompt: text("style_profile_prompt"),
+		topicPatternsPrompt: text("topic_patterns_prompt"),
+		keywords: text("keywords"),
+		// custom prompt questions
+		personality: text("personality"), // degen, artist, business, builder
+		tone: text("tone"), // formal, enthusiastic, humorous, irreverent
+		movieCharacter: text("movie_character"), // hero, villain, supporting, mentor
+		// farcaster user data
+		username: text("username"),
+		displayName: text("display_name"),
+		avatarUrl: text("avatar_url"),
+		address: text("address"),
+		privateKey: text("private_key"),
+		mnemonic: text("mnemonic"),
+		signerUuid: text("signer_uuid"),
+
 		createdAt: timestamp("created_at").defaultNow(),
 		updatedAt: timestamp("updated_at")
 			.defaultNow()
 			.$onUpdate(() => new Date()),
+		status: text("status").notNull(),
 	},
 	(t) => [index("idx_agent_creator_fid").on(t.creatorFid)],
 );
@@ -155,6 +192,24 @@ export const groupMemberTable = pgTable(
 export type GroupMember = typeof groupMemberTable.$inferSelect;
 export type CreateGroupMember = typeof groupMemberTable.$inferInsert;
 
+// Agent cast table
+export const agentCastTable = pgTable("agent_cast", {
+	id: text("id").primaryKey(),
+	agentFid: integer("agent_fid").references(() => agentTable.fid, {
+		onDelete: "cascade",
+	}),
+	castHash: text("cast_hash").notNull(),
+	castText: text("cast_text").notNull(),
+	parentCastHash: text("parent_cast_hash"),
+	parentCastText: text("parent_cast_text"),
+	parentCastAuthorFid: integer("parent_cast_author_fid"),
+	createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type AgentCast = typeof agentCastTable.$inferSelect;
+export type CreateAgentCast = typeof agentCastTable.$inferInsert;
+export type UpdateAgentCast = Partial<CreateAgentCast>;
+
 /**
  * Drizzle Relations
  */
@@ -177,11 +232,19 @@ export const castRelations = relations(castTable, ({ one }) => ({
 	}),
 }));
 
-export const agentRelations = relations(agentTable, ({ one }) => ({
+export const replyRelations = relations(replyTable, ({ one }) => ({
+	user: one(userTable, {
+		fields: [replyTable.fid],
+		references: [userTable.farcasterFid],
+	}),
+}));
+
+export const agentRelations = relations(agentTable, ({ one, many }) => ({
 	creator: one(userTable, {
 		fields: [agentTable.creatorFid],
 		references: [userTable.farcasterFid],
 	}),
+	casts: many(agentCastTable),
 }));
 
 export const groupRelations = relations(groupTable, ({ many }) => ({
@@ -196,5 +259,12 @@ export const groupMemberRelations = relations(groupMemberTable, ({ one }) => ({
 	group: one(groupTable, {
 		fields: [groupMemberTable.groupId],
 		references: [groupTable.id],
+	}),
+}));
+
+export const agentCastRelations = relations(agentCastTable, ({ one }) => ({
+	agent: one(agentTable, {
+		fields: [agentCastTable.agentFid],
+		references: [agentTable.fid],
 	}),
 }));

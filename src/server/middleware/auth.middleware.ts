@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { env } from "../../lib/env.js";
 import { response } from "./response.js";
 
-export const verifyNeynarSignatureMiddleware = (
+export const validateApiKey = (
 	req: Request,
 	_res: Response,
 	next: NextFunction,

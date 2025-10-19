@@ -4,7 +4,11 @@ import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { type Address, getAddress, isAddressEqual } from "viem";
 import type { User } from "../../../types/user.type.js";
 import { formatAvatarSrc } from "../../../utils/general.js";
-import { fetchUserFromNeynarByFid } from "../../neynar.js";
+import { env } from "../../env.js";
+import {
+	fetchUserFromNeynarByAddress,
+	fetchUserFromNeynarByFid,
+} from "../../neynar.js";
 import { userTable } from "../db.schema.js";
 import { db } from "../index.js";
 import { addUserWallets, getUserFromWalletAddress } from "./wallet.query.js";
@@ -57,7 +61,7 @@ async function createUserFromWalletAddress(
 	inboxId?: string,
 	farcasterUser?: NeynarUser,
 ): Promise<User> {
-	const dbUser = await db
+	const [dbUser] = await db
 		.insert(userTable)
 		.values({
 			username: farcasterUser?.username || null,
@@ -80,21 +84,34 @@ async function createUserFromWalletAddress(
 			farcasterReferrerFid: null,
 		})
 		.returning();
-	const wallets = await addUserWallets(dbUser[0].id, [
-		{ address, isPrimary: true },
-	]);
+
+	const addresses = [
+		getAddress(address),
+		...(farcasterUser?.verified_addresses.eth_addresses.map((a) =>
+			getAddress(a),
+		) || []),
+	];
+	const addressSetArray = Array.from(new Set(addresses));
+
+	const wallets = await addUserWallets(
+		dbUser.id,
+		addressSetArray.map((a) => ({
+			address: a,
+			isPrimary: a === getAddress(address),
+		})),
+	);
 	const ensOrBaseName = wallets.find(
 		(wallet) => wallet.ensName || wallet.baseName,
 	);
 	if (ensOrBaseName && !farcasterUser) {
 		// if the user doesnt have farcaster associated => add avatar and username based on ENS
-		await updateUser(dbUser[0].id, {
+		await updateUser(dbUser.id, {
 			username: ensOrBaseName.ensName || ensOrBaseName.baseName || null,
 			avatarUrl:
 				ensOrBaseName.ensAvatarUrl || ensOrBaseName.baseAvatarUrl || null,
 		});
 	}
-	return { ...dbUser[0], wallets };
+	return { ...dbUser, wallets };
 }
 
 /**
@@ -127,7 +144,12 @@ export const getOrCreateUserByInboxId = async (
 		return existing;
 	}
 	if (address) {
-		return await createUserFromWalletAddress(getAddress(address), inboxId);
+		const neynarUser = await fetchUserFromNeynarByAddress(address);
+		return await createUserFromWalletAddress(
+			getAddress(address),
+			inboxId,
+			neynarUser ?? undefined,
+		);
 	}
 	return null;
 };
@@ -161,10 +183,14 @@ export const getOrCreateUsersByInboxIds = async (
 	);
 	const toCreate = data.filter((d) => !existingInboxIds.has(d.inboxId));
 	const created = await Promise.all(
-		toCreate.map(
-			async (d) =>
-				await createUserFromWalletAddress(getAddress(d.address), d.inboxId),
-		),
+		toCreate.map(async (d) => {
+			const neynarUser = await fetchUserFromNeynarByAddress(d.address);
+			return await createUserFromWalletAddress(
+				getAddress(d.address),
+				d.inboxId,
+				neynarUser ?? undefined,
+			);
+		}),
 	);
 	return [...existing, ...created];
 };
@@ -383,3 +409,45 @@ export const getAllUsersNotificationDetails = async (): Promise<
  */
 export const updateUser = async (userId: string, newUser: Partial<User>) =>
 	await db.update(userTable).set(newUser).where(eq(userTable.id, userId));
+
+/**
+ * Set the paid transaction hash for a user
+ * @param userId - The database ID of the user
+ * @param paidTxHash - The transaction hash of the payment
+ * @returns The updated user
+ */
+export const setUserPaidTxHash = async (
+	senderAddress: string,
+	paidTxHash: string,
+) => {
+	const user = await getUserFromWalletAddress(getAddress(senderAddress));
+	if (!user) {
+		throw new Error("User not found");
+	}
+
+	const updatedUser = await db
+		.update(userTable)
+		.set({ paidTxHash })
+		.where(eq(userTable.id, user.id));
+
+	// auto init the agent with the user data
+	if (user.farcasterFid) {
+		await fetch(`${env.BACKEND_URL}/api/agent/init`, {
+			method: "POST",
+			headers: {
+				"x-api-key": env.BACKEND_API_KEY,
+			},
+			body: JSON.stringify({
+				fid: user.farcasterFid,
+				personality: "none",
+				tone: "none",
+				movieCharacter: "none",
+				walletAddress: senderAddress,
+			}),
+		});
+	} else {
+		console.warn("User has no Farcaster FID, skipping agent initialization");
+	}
+
+	return updatedUser;
+};

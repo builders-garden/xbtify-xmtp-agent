@@ -46,8 +46,12 @@ export const aiGenerateAnswer = async ({
 		system: SYSTEM_PROMPT,
 		messages: [
 			{
+				role: "assistant",
+				content: `If the user wants to create a new xbt ai clone, user's eth wallet address is ${senderAddress}.`,
+			},
+			{
 				role: "user",
-				content: `My eth wallet address is ${senderAddress}. ${message}`,
+				content: message,
 			},
 		],
 		tools,
@@ -57,6 +61,10 @@ export const aiGenerateAnswer = async ({
 	const outputStep = response.steps[0].content.find(
 		(part) => part.type === "tool-result",
 	);
+	const textResponse = response.steps[0].content.find(
+		(part) => part.type === "text",
+	)?.text;
+
 	console.log("Output Step:", outputStep);
 	if (outputStep) {
 		const outputText = (outputStep.output as string) ?? response.text;
@@ -112,5 +120,5 @@ export const aiGenerateAnswer = async ({
 	}
 
 	// 3. no tool call, return the text
-	return { answer: DEFAULT_RESPONSE_MESSAGE, user: undefined };
+	return { answer: textResponse ?? DEFAULT_RESPONSE_MESSAGE, user: undefined };
 };

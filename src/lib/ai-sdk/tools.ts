@@ -6,7 +6,8 @@ import { fetchUserFromNeynarByAddress } from "../neynar.js";
 
 export const tools = {
 	xbtify_create: tool({
-		description: "Let you create a new xbt ai clone of yourself",
+		description:
+			"If the user specify to create a new xbt ai clone, create a new xbt ai clone of the user",
 		inputSchema: z.object({
 			walletAddress: z
 				.string()
@@ -39,7 +40,7 @@ export const tools = {
 				walletAddress,
 				fid: user.fid,
 				username: user.username,
-				text: `Confirm that you want to create a new xbt ai clone for this wallet address __${walletAddress}__ (username: [${user.username}](https://farcaster.xyz/${user.username}) fid: ${user.fid})`,
+				text: `Confirm that you want to create a new xbt ai clone for your wallet address ${walletAddress} (username: ${user.username} fid: ${user.fid})`,
 			};
 		},
 	}),

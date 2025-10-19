@@ -42,6 +42,7 @@ import {
 import {
 	getOrCreateDmByConversationId,
 	getOrCreateGroupByConversationId,
+	setUserPaidTxHash,
 } from "../db/queries/index.js";
 import { env } from "../env.js";
 
@@ -108,11 +109,12 @@ export const handleXmtpMessage = async (
 			const conversationId = ctx.conversation.id;
 			const senderAddress = await ctx.getSenderAddress();
 			const inboxId = ctx.conversation.peerInboxId;
-
 			if (!senderAddress) {
 				console.error("Wallet address not found");
 				return;
 			}
+
+			await thinkingContext.helpers.addThinkingEmoji();
 
 			const { group, isNew } = await getOrCreateDmByConversationId(
 				conversationId,
@@ -140,15 +142,16 @@ export const handleXmtpMessage = async (
 				await watchUSDCTransfer({
 					targetAddress: getAddress(agentAddress),
 					senderAddress: getAddress(senderAddress),
-					onSuccess: ({ txHash }) => {
+					onSuccess: async ({ txHash }) => {
 						ctx.sendText(
-							`Payment received! Creating your ai clone... I'll let you know when it's ready. https://basescan.org/tx/${txHash}`,
+							`Payment received, creating your ai clone in the background... you'll be notified when it's ready`,
 						);
+						await setUserPaidTxHash(senderAddress, txHash);
 					},
 				});
-				if (answer.answer) {
-					await ctx.sendTextReply(answer.answer);
-				}
+			}
+			if (answer.answer) {
+				await ctx.sendTextReply(answer.answer);
 			}
 		}
 
@@ -159,7 +162,6 @@ export const handleXmtpMessage = async (
 			const { group, isNew } = await getOrCreateGroupByConversationId(
 				conversationId,
 				ctx.conversation,
-				agentAddress,
 				ctx.client.inboxId,
 			);
 			console.log("group", group.id, "isNew:", isNew);
@@ -225,10 +227,8 @@ export const handleXmtpMessage = async (
 					await watchUSDCTransfer({
 						targetAddress: getAddress(agentAddress),
 						senderAddress: getAddress(senderAddress),
-						onSuccess: ({ txHash }) => {
-							ctx.sendText(
-								`Payment received! Creating your ai clone... I'll let you know when it's ready. https://basescan.org/tx/${txHash}`,
-							);
+						onSuccess: async ({ txHash }) => {
+							await setUserPaidTxHash(senderAddress, txHash);
 						},
 					});
 				}

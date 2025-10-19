@@ -1,7 +1,13 @@
 /**
  * @see https://github.com/xmtp/xmtp-qa-tools/blob/main/agents/monitoring/agents.ts
  */
-export const XMTP_AGENTS = [
+export const XMTP_AGENTS: {
+	name: string;
+	address: string;
+	sendMessage: string;
+	networks: string[];
+	live: boolean;
+}[] = [
 	{
 		name: "elsa",
 		address: "0xe15aa1ba585aea8a4639331ce5f9aec86f8c4541",

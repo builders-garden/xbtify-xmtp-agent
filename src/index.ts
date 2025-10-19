@@ -14,11 +14,13 @@ import {
 	eyesReactionMiddleware,
 	inlineActionsMiddleware,
 } from "./lib/xmtp/middlewares.js";
+import { validateApiKey } from "./server/middleware/auth.middleware.js";
 import {
 	handleError,
 	handleNotFound,
 } from "./server/middleware/error.middleware.js";
 import responseMiddleware from "./server/middleware/response.js";
+import messageRoutes from "./server/routes/message.route.js";
 import { ContentTypeActions } from "./types/index.js";
 import { getXmtpActions, registerXmtpActions } from "./utils/index.js";
 
@@ -45,6 +47,8 @@ async function main() {
 	app.get("/", (_req, res) => {
 		res.json({ status: "ok" });
 	});
+
+	app.use("/api/send", validateApiKey, messageRoutes);
 
 	// Use custom middlewares for handling 404 and errors
 	app.use(handleNotFound);
@@ -79,7 +83,6 @@ async function main() {
 		const { group, isNew } = await getOrCreateGroupByConversationId(
 			conversationId,
 			ctx.conversation as Group,
-			agentAddress,
 			ctx.client.inboxId,
 		);
 
