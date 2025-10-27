@@ -451,3 +451,15 @@ export const setUserPaidTxHash = async (
 
 	return updatedUser;
 };
+
+/**
+ * Check if a transaction hash has already been used
+ * @param txHash - The transaction hash to check
+ * @returns True if the transaction hash has already been used, false otherwise
+ */
+export const checkIfTxHashAlreadyUsed = async (txHash: string) => {
+	const user = await db.query.userTable.findFirst({
+		where: eq(userTable.paidTxHash, txHash),
+	});
+	return user !== null;
+};

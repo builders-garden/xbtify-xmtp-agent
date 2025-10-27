@@ -8,6 +8,7 @@ import type { GroupUpdated } from "@xmtp/content-type-group-updated";
 import type { Reaction } from "@xmtp/content-type-reaction";
 import type { RemoteAttachment } from "@xmtp/content-type-remote-attachment";
 import type { Reply } from "@xmtp/content-type-reply";
+import type { TransactionReference } from "@xmtp/content-type-transaction-reference";
 import type { WalletSendCallsParams } from "@xmtp/content-type-wallet-send-calls";
 import { AGENT_TRIGGERS, BOT_MENTIONS } from "../lib/constants.js";
 import type { Group } from "../lib/db/db.schema.js";
@@ -44,6 +45,7 @@ export async function isReplyToAgent(
 		| GroupUpdated
 		| Reaction
 		| RemoteAttachment
+		| TransactionReference
 	>,
 ): Promise<boolean> {
 	// Check if the message is a reply type
@@ -213,6 +215,7 @@ export async function shouldRespondToMessage({
 		| GroupUpdated
 		| Reaction
 		| RemoteAttachment
+		| TransactionReference
 	>;
 }): Promise<boolean> {
 	const messageContent = extractMessageContent(message);

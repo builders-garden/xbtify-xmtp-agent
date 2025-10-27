@@ -9,8 +9,8 @@ export type NetworkConfig = {
 // Base USDC address
 export const BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
-// Agent transfer amount (10 USDC)
-export const AGENT_TRANSFER_AMOUNT = 0.01;
+// Agent transfer amount (5 USDC)
+export const AGENT_TRANSFER_AMOUNT = 5;
 
 // Available network configurations
 export const XMTP_NETWORKS: Record<number, NetworkConfig> = {

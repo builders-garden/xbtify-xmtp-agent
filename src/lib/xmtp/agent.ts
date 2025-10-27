@@ -1,15 +1,29 @@
 import { Agent, filter, type MessageContext } from "@xmtp/agent-sdk";
 import type { GroupUpdated } from "@xmtp/content-type-group-updated";
 import { GroupUpdatedCodec } from "@xmtp/content-type-group-updated";
+import { MarkdownCodec } from "@xmtp/content-type-markdown";
 import type { Reaction } from "@xmtp/content-type-reaction";
 import { ReactionCodec } from "@xmtp/content-type-reaction";
 import type { RemoteAttachment } from "@xmtp/content-type-remote-attachment";
 import { RemoteAttachmentCodec } from "@xmtp/content-type-remote-attachment";
 import type { Reply } from "@xmtp/content-type-reply";
 import { ReplyCodec } from "@xmtp/content-type-reply";
+import {
+	type TransactionReference,
+	TransactionReferenceCodec,
+} from "@xmtp/content-type-transaction-reference";
 import type { WalletSendCallsParams } from "@xmtp/content-type-wallet-send-calls";
 import { WalletSendCallsCodec } from "@xmtp/content-type-wallet-send-calls";
-import { getAddress } from "viem";
+import {
+	type Address,
+	erc20Abi,
+	formatUnits,
+	getAddress,
+	type Hex,
+	isHex,
+	parseEventLogs,
+	parseUnits,
+} from "viem";
 import type {
 	ActionsContent,
 	GroupUpdatedMessage,
@@ -32,14 +46,17 @@ import {
 	shouldRespondToMessage,
 	shouldSendHelpHint,
 } from "../../utils/message.util.js";
-import { watchUSDCTransfer } from "../../utils/viem.util.js";
+import { getTransactionReceipt } from "../../utils/viem.util.js";
 import { aiGenerateAnswer } from "../ai-sdk/index.js";
 import {
+	AGENT_TRANSFER_AMOUNT,
+	BASE_USDC_ADDRESS,
 	DEFAULT_ACTIONS_MESSAGE_2,
 	HELP_HINT_MESSAGE,
 	WELCOME_MESSAGE,
 } from "../constants.js";
 import {
+	checkIfTxHashAlreadyUsed,
 	getOrCreateDmByConversationId,
 	getOrCreateGroupByConversationId,
 	setUserPaidTxHash,
@@ -69,6 +86,8 @@ export const createXmtpAgent = async () => {
 			new IntentCodec(),
 			new ReactionCodec(),
 			new RemoteAttachmentCodec(),
+			new MarkdownCodec(),
+			new TransactionReferenceCodec(),
 		],
 	});
 };
@@ -87,6 +106,7 @@ export const handleXmtpMessage = async (
 		| GroupUpdated
 		| Reaction
 		| RemoteAttachment
+		| TransactionReference
 	>,
 	agentAddress: string,
 ) => {
@@ -137,19 +157,6 @@ export const handleXmtpMessage = async (
 				xmtpContext: ctx,
 			});
 			console.log("answer from ai", answer);
-			// if i have sent a call transfer, lets see if the user has paid
-			if (answer.user?.walletAddress) {
-				await watchUSDCTransfer({
-					targetAddress: getAddress(agentAddress),
-					senderAddress: getAddress(senderAddress),
-					onSuccess: async ({ txHash }) => {
-						ctx.sendText(
-							`Payment received, creating your ai clone in the background... you'll be notified when it's ready.\n\nOpen https://xbtify.me for a preview.`,
-						);
-						await setUserPaidTxHash(senderAddress, txHash);
-					},
-				});
-			}
 			if (answer.answer) {
 				await ctx.sendTextReply(answer.answer);
 			}
@@ -222,20 +229,6 @@ export const handleXmtpMessage = async (
 					xmtpContext: ctx,
 				});
 				console.log("answer from ai", answer);
-				// if i have sent a call transfer, lets see if the user has paid
-				if (answer.user?.walletAddress) {
-					await watchUSDCTransfer({
-						targetAddress: getAddress(agentAddress),
-						senderAddress: getAddress(senderAddress),
-						onSuccess: async ({ txHash }) => {
-							ctx.sendText(
-								`Payment received, creating your ai clone in the background... you'll be notified when it's ready.\n\nOpen https://xbtify.me for a preview.`,
-							);
-							await setUserPaidTxHash(senderAddress, txHash);
-						},
-					});
-				}
-
 				if (answer.answer) {
 					await ctx.sendTextReply(answer.answer);
 				}
@@ -244,5 +237,104 @@ export const handleXmtpMessage = async (
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		console.error("❌ Error processing message:", errorMessage);
+	}
+};
+
+/**
+ * Handle payment received in XMTP transaction reference
+ * @param transactionReference - The transaction reference
+ * @param senderAddress - The sender address
+ * @param agentAddress - The agent address
+ * @returns true if the payment is valid, false otherwise
+ */
+export const handlePaymentReceived = async ({
+	transactionReference,
+	senderAddress,
+	agentAddress,
+}: {
+	transactionReference: TransactionReference;
+	senderAddress: Address;
+	agentAddress: Address;
+}): Promise<boolean> => {
+	try {
+		const txHash = transactionReference.reference;
+		if (!isHex(txHash)) {
+			console.error("Transaction hash is not a valid hex");
+			return false;
+		}
+
+		// 1. get transaction receipt from base
+		const txReceipt = await getTransactionReceipt(txHash as Hex);
+		if (!txReceipt) {
+			console.error(`Transaction not found ${txHash}`);
+			return false;
+		}
+		if (txReceipt.status !== "success") {
+			console.error("Transaction failed", txHash);
+			return false;
+		}
+
+		// 2. parse erc20 logs for the transfer event
+		const logs = parseEventLogs({
+			abi: erc20Abi,
+			eventName: ["Transfer"],
+			args: {
+				from: senderAddress,
+				to: agentAddress,
+				value: parseUnits(AGENT_TRANSFER_AMOUNT.toString(), 6), // USDC has 6 decimals
+			},
+			logs: txReceipt.logs,
+		});
+
+		// 3. check erc20 logs for transfer event
+		const transferEvent = logs.find((log) => log.eventName === "Transfer");
+		if (!transferEvent) {
+			console.error("Transfer event not found");
+			return false;
+		}
+		const contractAddress = transferEvent.address;
+		const amount = formatUnits(BigInt(transferEvent.args.value), 6);
+		const from = getAddress(transferEvent.args.from);
+		const to = getAddress(transferEvent.args.to);
+		console.log("from", from, "to", to, "amount", amount, transferEvent);
+
+		// check contract address is Base USDC
+		if (contractAddress !== BASE_USDC_ADDRESS) {
+			console.error(`Contract address is not Base USDC: ${contractAddress}`);
+			return false;
+		}
+		// check sender is the same as the one in the message
+		if (from !== senderAddress) {
+			console.error("Sender address not found in transfer event");
+			return false;
+		}
+		// check destination is agent address
+		if (to !== agentAddress) {
+			console.error("Agent address not found in transfer event");
+			return false;
+		}
+		// check amount is gte the 5 USDC amount
+		if (Number.parseFloat(amount) >= Number(AGENT_TRANSFER_AMOUNT)) {
+			console.log(`✅ Received ${amount} USDC on transaction ${txHash}!`);
+		} else {
+			console.log(
+				`❌ Received ${amount} USDC, but it's less than ${AGENT_TRANSFER_AMOUNT} USDC on transaction ${transferEvent.transactionHash}`,
+			);
+		}
+
+		// 4. check this txHash has not been used already
+		const alreadyUsed = await checkIfTxHashAlreadyUsed(txHash);
+		if (alreadyUsed) {
+			console.error(`Transaction hash has already been used: ${txHash}`);
+			return false;
+		}
+
+		// 5. set the paid transaction hash for the user
+		await setUserPaidTxHash(senderAddress, txHash);
+		return true;
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		console.error("❌ Error handling payment received:", errorMessage);
+		return false;
 	}
 };

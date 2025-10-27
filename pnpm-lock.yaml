@@ -41,6 +41,9 @@ importers:
       '@xmtp/content-type-group-updated':
         specifier: ^2.0.2
         version: 2.0.2
+      '@xmtp/content-type-markdown':
+        specifier: ^1.0.0
+        version: 1.0.0
       '@xmtp/content-type-primitives':
         specifier: ^2.0.2
         version: 2.0.2
@@ -54,6 +57,9 @@ importers:
         specifier: ^2.0.2
         version: 2.0.2
       '@xmtp/content-type-text':
+        specifier: ^2.0.2
+        version: 2.0.2
+      '@xmtp/content-type-transaction-reference':
         specifier: ^2.0.2
         version: 2.0.2
       '@xmtp/content-type-wallet-send-calls':
@@ -1652,6 +1658,9 @@ packages:
   '@xmtp/content-type-group-updated@2.0.2':
     resolution: {integrity: sha512-ZUGLtzWALo5jimk5hYBVXjbdaKT6zP6a9wK0Urzl9H+Xv2w+H3fYDhwAidU0PXTcLL81qlUM6joxKVlsF5udvA==}
 
+  '@xmtp/content-type-markdown@1.0.0':
+    resolution: {integrity: sha512-B0Pevjjxf+Nps8MyMXEklp7jzcwIH42tFzT3FlGTiOSh/0g3o8SgkxPETKGK/ifL5vjV0u4AzeJsgTEbHl/d6Q==}
+
   '@xmtp/content-type-primitives@2.0.2':
     resolution: {integrity: sha512-OTUsCD48sO2Eg69dfre32OSnXSkmefbSZA4L0S58LqYK6+hMymFRRjEH4fvPzXc9WCw5FmCYEG7DFAaB680HiQ==}
 
@@ -1666,6 +1675,9 @@ packages:
 
   '@xmtp/content-type-text@2.0.2':
     resolution: {integrity: sha512-nlRufOYPrG5sNbruNPCsb6Qk9/jmJ5lMooPsZEo4Dbwda/2S4bSvrrIncT6if7M2SCha3hxtlgJlFGeTtHy4gQ==}
+
+  '@xmtp/content-type-transaction-reference@2.0.2':
+    resolution: {integrity: sha512-7JwqZ3phX/XIZByY4XnteW/0c/XtPOeuEG3GayLOMELyEBJxoVog4evxFidoWb/vtEm9JuqqKqh8VtUaekhXYA==}
 
   '@xmtp/content-type-wallet-send-calls@2.0.0':
     resolution: {integrity: sha512-212g68DjwFMh3gaAwULJvrhpuje6Tp4rF94oy3lQRvnXCQ+xLkyDi8pT5Pyw3Dm6jW+ke1U0hauzV7sLCgIFSw==}
@@ -6286,6 +6298,10 @@ snapshots:
       '@xmtp/content-type-primitives': 2.0.2
       '@xmtp/proto': 3.87.0
 
+  '@xmtp/content-type-markdown@1.0.0':
+    dependencies:
+      '@xmtp/content-type-primitives': 2.0.2
+
   '@xmtp/content-type-primitives@2.0.2':
     dependencies:
       '@xmtp/proto': 3.87.0
@@ -6306,6 +6322,10 @@ snapshots:
       '@xmtp/proto': 3.87.0
 
   '@xmtp/content-type-text@2.0.2':
+    dependencies:
+      '@xmtp/content-type-primitives': 2.0.2
+
+  '@xmtp/content-type-transaction-reference@2.0.2':
     dependencies:
       '@xmtp/content-type-primitives': 2.0.2
 

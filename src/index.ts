@@ -1,15 +1,24 @@
 import type { Group } from "@xmtp/agent-sdk";
 import { logDetails } from "@xmtp/agent-sdk/debug";
+import {
+	type TransactionReference,
+	TransactionReferenceCodec,
+} from "@xmtp/content-type-transaction-reference";
 import cookieParserMiddleware from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import morganLogger from "morgan";
+import { getAddress } from "viem";
 import { base } from "viem/chains";
 import { DEFAULT_ACTIONS_MESSAGE_2, WELCOME_MESSAGE } from "./lib/constants.js";
 import { getOrCreateGroupByConversationId } from "./lib/db/queries/index.js";
 import { env } from "./lib/env.js";
-import { createXmtpAgent, handleXmtpMessage } from "./lib/xmtp/agent.js";
+import {
+	createXmtpAgent,
+	handlePaymentReceived,
+	handleXmtpMessage,
+} from "./lib/xmtp/agent.js";
 import {
 	eyesReactionMiddleware,
 	inlineActionsMiddleware,
@@ -74,6 +83,35 @@ async function main() {
 
 	xmtpAgent.on("message", async (ctx) => {
 		console.log(`Message received: ${JSON.stringify(ctx.message.content)}`);
+
+		if (ctx.usesCodec(TransactionReferenceCodec)) {
+			const senderAddress = await ctx.getSenderAddress();
+			if (!senderAddress) {
+				console.error("Sender address not found");
+				return;
+			}
+			const transactionReference = ctx.message.content as unknown as {
+				transactionReference: TransactionReference;
+			};
+			console.log(
+				"Transaction reference",
+				transactionReference.transactionReference,
+			);
+			const isValidPayment = await handlePaymentReceived({
+				transactionReference: transactionReference.transactionReference,
+				senderAddress: getAddress(senderAddress),
+				agentAddress: getAddress(agentAddress),
+			});
+			console.log("isValidPayment", isValidPayment);
+			if (isValidPayment) {
+				ctx.sendText(
+					`Payment received, creating your ai clone in the background... you'll be notified when it's ready.\n\nOpen https://xbtify.me for a preview.`,
+				);
+			} else {
+				ctx.sendText("Payment not recognized, please try again.");
+			}
+			return;
+		}
 		await handleXmtpMessage(ctx, agentAddress);
 	});
 
